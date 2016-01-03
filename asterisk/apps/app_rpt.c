@@ -8335,7 +8335,7 @@ char	*val,fname[300],str[100];
 	sprintf(str,"%d",atoi(name + 1));	
 	if (elink_db_get(str,'n',NULL,fname,NULL) < 1) return res;
 	// DL9RDZ mod: suppress Echolink suffix
-	char *minus = strchr(fname, 'R');
+	char *minus = strchr(fname, '-');
 	if(minus) *minus=0;
 	res = sayphoneticstr(mychannel,fname);
 	return res;
