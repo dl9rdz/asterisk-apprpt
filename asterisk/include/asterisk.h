@@ -28,7 +28,7 @@
 
 #include "asterisk/paths.h"
 
-#define DEFAULT_LANGUAGE "en"
+#define DEFAULT_LANGUAGE "de"
 
 #define DEFAULT_SAMPLE_RATE 8000
 #define DEFAULT_SAMPLES_PER_MS  ((DEFAULT_SAMPLE_RATE)/1000)

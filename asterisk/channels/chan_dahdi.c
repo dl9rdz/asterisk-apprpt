@@ -5057,6 +5057,7 @@ static int my_dahdi_write(struct dahdi_pvt *p, unsigned char *buf, int len, int 
 			size = (linear ? READ_SIZE * 2 : READ_SIZE);
 		res = write(fd, buf, size);
 		if (res != size) {
+			if(res==-1) return 0; // dl9rdz: this is probably a bug? sent is never changed...
 			if (option_debug)
 				ast_log(LOG_DEBUG, "Write returned %d (%s) on channel %d\n", res, strerror(errno), p->channel);
 			return sent;

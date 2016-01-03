@@ -388,7 +388,7 @@
 #define	VOX_ON_DEBOUNCE_COUNT 3
 #define	VOX_OFF_DEBOUNCE_COUNT 20
 #define	VOX_MAX_THRESHOLD 10000.0
-#define	VOX_MIN_THRESHOLD 3000.0
+#define	VOX_MIN_THRESHOLD 1000.0
 #define	VOX_TIMEOUT_MS 10000
 #define	VOX_RECOVER_MS 2000
 #define	SIMPLEX_PATCH_DELAY 25
@@ -1563,6 +1563,34 @@ static const char *my_variable_match(const struct ast_config *config, const char
 }
 #endif
 
+/* Translate VOIP phone number into callsign */
+static char *voiptrans[10] = {"0", "1", "2ABC", "3DEF", "4GHI", "5JKL", "6MNO", "7PQRS", "8TUV", "9WXYZ"};
+/* dl9rdz */
+static int translate_voip(char *outto, char *from, int maxlen) {
+	int i,j=0;
+	char to[maxlen+1];
+	for(i=0; i<strlen(from); i+=2) {
+		if(from[i]<'0' || from[i]>'9') {j=-1; break;} // ERROR
+		int i1 = from[i]-'0';
+		int i2=0;
+		if(i+1<strlen(from)) {
+			if(from[i+1]<'0' || from[i+1]>'9') { j=-1; break; } // ERROR
+			i2 = from[i+1]-'0';
+		}
+		if(i2>=strlen(voiptrans[i1])) { j=-1; break; } // ERROR
+		if(j<maxlen-1) to[j++] = voiptrans[i1][i2];
+	}
+	if(j<0) {
+		ast_log(LOG_WARNING, "translate_voip: cannot translate caller ID %s\n",from);
+		return -1;	
+	}
+	to[j] = 0;
+	ast_log(LOG_NOTICE, "translate_voip: incoming caller ID %s translated to %s\n",from,to);
+	strncpy(outto, to, maxlen);
+	return 0;
+}
+
+
 /* Return 1 if a web transceiver node */
 static int iswebtransceiver(struct  rpt_link *l)
 {
@@ -1651,7 +1679,7 @@ static void voxinit_link(struct rpt_link *mylink,char enable)
 
 static int dovox(struct vox *v,short *buf,int bs)
 {
-
+	static int xx=0;
 	int i;
 	float	esquare = 0.0;
 	float	energy = 0.0;
@@ -1694,6 +1722,7 @@ static int dovox(struct vox *v,short *buf,int bs)
 			v->enacount = 0;
 		}
 	} else v->enacount = 0;
+
 	return(v->lastvox);
 
 
@@ -8305,6 +8334,9 @@ char	*val,fname[300],str[100];
 	if (myrpt->p.eannmode < 2) return res;
 	sprintf(str,"%d",atoi(name + 1));	
 	if (elink_db_get(str,'n',NULL,fname,NULL) < 1) return res;
+	// DL9RDZ mod: suppress Echolink suffix
+	char *minus = strchr(fname, 'R');
+	if(minus) *minus=0;
 	res = sayphoneticstr(mychannel,fname);
 	return res;
 }
@@ -8610,6 +8642,8 @@ struct	tm localtm;
 		else
 			 ast_log(LOG_WARNING, "ast_streamfile failed on %s\n", mychannel->name);
 		ast_stopstream(mychannel);
+#if 0
+		// MOD by DL9RDZ: short announcement
 		res = ast_streamfile(mychannel, "digits/2", mychannel->language);
 		if (!res) 
 			res = ast_waitstream(mychannel, "");
@@ -8617,6 +8651,7 @@ struct	tm localtm;
 			 ast_log(LOG_WARNING, "ast_streamfile failed on %s\n", mychannel->name);
 		ast_stopstream(mychannel);
 		saynode(myrpt,mychannel,strs[1]);
+#endif
 		return;
 	}
 	if (!strcasecmp(strs[0],"CONNFAIL"))
@@ -9598,6 +9633,8 @@ treataslocal:
 		else
 			 ast_log(LOG_WARNING, "ast_streamfile failed on %s\n", mychannel->name);
 		ast_stopstream(mychannel);
+#if 0
+		// MOD by DL9RDZ: short announcement
 		res = ast_streamfile(mychannel, "digits/2", mychannel->language);
 		if (!res) 
 			res = ast_waitstream(mychannel, "");
@@ -9605,6 +9642,7 @@ treataslocal:
 			 ast_log(LOG_WARNING, "ast_streamfile failed on %s\n", mychannel->name);
 		ast_stopstream(mychannel);
 		res = saynode(myrpt,mychannel,myrpt->name);
+#endif
 		imdone = 1;
 		break;
 	    case CONNFAIL:
@@ -10977,7 +11015,7 @@ struct ast_channel *mychannel,*genchannel,*c;
 		{
 			stopped = 1;
 			/* stop dial tone */
-			tone_zone_play_tone(genchannel->fds[0],-1);
+			// dl9rdz -- tone_zone_play_tone(genchannel->fds[0],-1);
 		}
 		if (myrpt->callmode == 1)
 		{
@@ -10995,7 +11033,7 @@ struct ast_channel *mychannel,*genchannel,*c;
 			if(!congstarted){
 				congstarted = 1;
 				/* start congestion tone */
-				tone_zone_play_tone(genchannel->fds[0],DAHDI_TONE_CONGESTION);
+				// dl9rdz - tone_zone_play_tone(genchannel->fds[0],DAHDI_TONE_CONGESTION);
 			}
 		}
 		res = ast_safe_sleep(mychannel, MSWAIT);
@@ -11013,7 +11051,7 @@ struct ast_channel *mychannel,*genchannel,*c;
 		dialtimer += MSWAIT;
 	}
 	/* stop any tone generation */
-	tone_zone_play_tone(genchannel->fds[0],-1);
+	//dl9rdz - tone_zone_play_tone(genchannel->fds[0],-1);
 	/* end if done */
 	if (!myrpt->callmode)
 	{
@@ -11130,7 +11168,7 @@ struct ast_channel *mychannel,*genchannel,*c;
 				myrpt->callmode = 4;
 				rpt_mutex_unlock(&myrpt->lock);
 				/* start congestion tone */
-				tone_zone_play_tone(genchannel->fds[0],DAHDI_TONE_CONGESTION);
+				//dl9rdz - tone_zone_play_tone(genchannel->fds[0],DAHDI_TONE_CONGESTION);
 				rpt_mutex_lock(&myrpt->lock);
 			}
 		}
@@ -11168,7 +11206,7 @@ struct ast_channel *mychannel,*genchannel,*c;
 	if(debug)
 		ast_log(LOG_NOTICE, "exit channel loop\n");
 	rpt_mutex_unlock(&myrpt->lock);
-	tone_zone_play_tone(genchannel->fds[0],-1);
+	// dl9rdz - tone_zone_play_tone(genchannel->fds[0],-1);
 	if (mychannel->pbx) ast_softhangup(mychannel,AST_SOFTHANGUP_DEV);
 	ast_hangup(genchannel);
 	rpt_mutex_lock(&myrpt->lock);
@@ -11685,7 +11723,8 @@ static int function_ilink(struct rpt *myrpt, char *param, char *digits, int comm
 				
 				default:
 					rpt_telem_select(myrpt,command_source,mylink);
-					rpt_telemetry(myrpt, CONNFAIL, NULL);
+					//rpt_telemetry(myrpt, CONNFAIL, NULL);
+					rpt_telemetry(myrpt, REMNOTFOUND, NULL);
 					return DC_COMPLETE;
 			}
 			break;
@@ -20872,6 +20911,7 @@ char tmpstr[300],lstr[MAXLINKLIST],lat[100],lon[100],elev[100];
 				/* if RX un-key */
 				if (f->subclass == AST_CONTROL_RADIO_UNKEY)
 				{
+					usleep(200000);  /* UGLY HACK BY DL9RDZ */
 					char asleep = myrpt->p.s[myrpt->p.sysstate_cur].sleepena & myrpt->sleep;
 
 					if ((!lasttx) || (myrpt->p.duplex > 1) || (myrpt->p.linktolink))
@@ -22481,11 +22521,14 @@ static int rpt_exec(struct ast_channel *chan, void *data)
 		phone_mode = 1;
 		if (*options == 'D') phone_mode = 2;
 		if (*options == 'S') phone_mode = 3;
-		ast_set_callerid(chan,"0","app_rpt user","0");
+
 		val = 1;
 		ast_channel_setoption(chan,AST_OPTION_TONE_VERIFY,&val,sizeof(char),0);
 		if (strchr(options + 1,'v') || strchr(options + 1,'V')) phone_vox = 1;
 		if (strchr(options + 1,'m') || strchr(options + 1,'M')) phone_monitor = 1;
+		// mod dl9rdz - don't overwrite caller id from IAX
+		
+		//ast_set_callerid(chan, chan->cid.cid_num, "app_rpt user", chan->cid.cid_num);
 	}
 	else
 	{
@@ -22770,7 +22813,7 @@ static int rpt_exec(struct ast_channel *chan, void *data)
 			ast_log(LOG_WARNING, "Doesnt have callerid on %s\n",tmp);
 			return -1;
 		}
-		if (phone_mode) 
+		if (/*dl9rdz*/ 00 && phone_mode) 
 		{
 			b1 = "0";
 			b = NULL;
@@ -22780,11 +22823,14 @@ static int rpt_exec(struct ast_channel *chan, void *data)
 		{
 			b = chan->cid.cid_name;
 			b1 = chan->cid.cid_num;
+			ast_log(LOG_WARNING, "Incoming call from %s (%s)\n",b,b1);
 			ast_shrink_phone_number(b1);
 			/* if is an IAX client */
-			if ((b1[0] == '0') && b && b[0] && (strlen(b) <= 8))
-				b1 = b;
-		}
+			if(!phone_mode) {
+				if ((b1[0] == '0') && b && b[0] && (strlen(b) <= 8))
+					b1 = b;
+			}
+		} 
 		if (!strcmp(myrpt->name,b1))
 		{
 			ast_log(LOG_WARNING, "Trying to link to self!!\n");
@@ -22822,6 +22868,9 @@ static int rpt_exec(struct ast_channel *chan, void *data)
 				usleep(500000);	
 			} else 
 				rpt_mutex_unlock(&myrpt->lock);
+		}
+		if(phone_mode) {
+			translate_voip(b1, b1, strlen(b1));
 		}
 		/* establish call in tranceive mode */
 		l = ast_malloc(sizeof(struct rpt_link));
@@ -22915,17 +22964,19 @@ static int rpt_exec(struct ast_channel *chan, void *data)
 			char str[100];
 
 			if (l->phonemode)
-				sprintf(str,"LINK(P),%s",l->name);
+				sprintf(str,"LINK(P),%s",chan->cid.cid_num/*l->name*/);
 			else
 				sprintf(str,"LINK,%s",l->name);
 			donodelog(myrpt,str);
+			// dl9rdz
+			int xres = ast_say_digit_str(chan, chan->cid.cid_num, AST_DIGIT_ANY, chan->language);
 		}
 		doconpgm(myrpt,l->name);
 		if ((!phone_mode) && (l->name[0] <=  '9'))
 			send_newkey(chan);
 		if ((!strncasecmp(l->chan->name,"echolink",8)) ||
 		    (!strncasecmp(l->chan->name,"tlb",3)) ||
-		      (l->name[0] > '9'))
+		      (l->name[0] > '9') || 1)  // dl9rdz
 			rpt_telemetry(myrpt,CONNECTED,l);
 		return AST_PBX_KEEPALIVE;
 	}
@@ -23735,7 +23786,7 @@ static int rpt_exec(struct ast_channel *chan, void *data)
 						AST_FRAME_DATAP(f),f->datalen / 2);
 					if (n1 != myrpt->wasvox)
 					{
-						if (debug) ast_log(LOG_DEBUG,"Remote  vox %d\n",n1);
+						if (debug) ast_log(LOG_NOTICE,"Remote  vox %d\n",n1);
 						myrpt->wasvox = n1;
 						myrpt->voxtostate = 0;
 						if (n1) myrpt->voxtotimer = myrpt->p.voxtimeout_ms;

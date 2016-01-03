@@ -1824,7 +1824,7 @@ static int ast_el_read_char(EditLine *el, char *cp)
 
 			/* Write over the CLI prompt */
 			if (!ast_opt_exec && !lastpos)
-				write(STDOUT_FILENO, "\r", 1);
+				write(STDOUT_FILENO, "\r[0K", 5);
 			write(STDOUT_FILENO, buf, res);
 			if ((res < EL_BUF_SIZE - 1) && ((buf[res-1] == '\n') || (buf[res-2] == '\n'))) {
 				*cp = CC_REFRESH;

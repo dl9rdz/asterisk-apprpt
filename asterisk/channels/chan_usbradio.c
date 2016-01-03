@@ -5216,11 +5216,11 @@ static struct chan_usbradio_pvt *store_config(struct ast_config *cfg, char *ctg,
 			M_BOOL("autohangup", o->autohangup)
 			M_BOOL("overridecontext", o->overridecontext)
 			M_STR("context", o->ctx)
-			M_STR("language", o->language)
 			M_STR("mohinterpret", o->mohinterpret)
 			M_STR("extension", o->ext)
 			M_F("callerid", store_callerid(o, v->value))
 #endif
+			M_STR("language", o->language)
 			M_UINT("frags", o->frags)
 			M_UINT("queuesize",o->queuesize)
 #if 0

@@ -4,7 +4,7 @@
 
 ASTSRC_VERS:=1.1.6
 KVERS?=$(shell uname -r)
-PROCESSOR?=i586
+PROCESSOR?=arm
 
 /usr/include/linux:
 	-umount /mnt/cf
