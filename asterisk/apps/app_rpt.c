@@ -1168,6 +1168,7 @@ static struct rpt
 	int unkeytocttimer;
 	time_t lastkeyedtime;
 	time_t lasttxkeyedtime;
+	char reflstate;		// dl9rdz extension: status tracking for reflector control
 	char keyed;
 	char txkeyed;
 	char exttx;
@@ -8321,7 +8322,8 @@ char	*val,fname[300],str[100];
 		snprintf(fname,sizeof(fname) - 1,"%s/%s",val,name);
 		if (ast_fileexists(fname,NULL,mychannel->language) > 0)
 			return(sayfile(mychannel,fname));
-		res = sayfile(mychannel,"rpt/node");
+		// dl9rdz res = sayfile(mychannel,"rpt/node");
+		res = sayfile(mychannel,"rpt/voip");
 		if (!res) 
 			res = ast_say_character_str(mychannel,name,NULL,mychannel->language);
 	}
@@ -8337,7 +8339,9 @@ char	*val,fname[300],str[100];
 	// DL9RDZ mod: suppress Echolink suffix
 	char *minus = strchr(fname, '-');
 	if(minus) *minus=0;
-	res = sayphoneticstr(mychannel,fname);
+	res = sayfile(mychannel,"rpt/echolink");
+	res = ast_say_character_str(mychannel, fname, NULL, mychannel->language);
+	//res = sayphoneticstr(mychannel,fname);
 	return res;
 }
 
@@ -18957,6 +18961,82 @@ static void do_scheduler(struct rpt *myrpt)
 
 }
 
+//dl9rdz extension
+enum { REFL_IDLE, REFL_KEYED, REFL_REMOTE, REFL_TELE, REFL_OTHER };
+
+static char mutepidfile[] = "/var/run/reflector-mute.pid";
+
+static int getpid_reflector_mute()
+{
+	FILE *f;
+	int pid;
+
+	if (!(f=fopen(mutepidfile,"r"))) {
+		ast_log(LOG_WARNING,"Cannot open reflector mute pid file %s!\n", mutepidfile);
+		return -1;
+	}
+	int res = fscanf(f,"%d", &pid);
+	if(res<1) {
+		ast_log(LOG_WARNING,"Error reading reflector mute pid from file %s!\n", mutepidfile);
+		fclose(f);
+		return -1;
+	}
+	fclose(f);
+	return pid;
+}
+
+int mutepid=-1;
+static void reflector_mute(int onoff)
+{
+	if(mutepid==-1)
+		mutepid = getpid_reflector_mute();
+	if(mutepid==-1)
+		return;
+	int res = kill(mutepid, onoff?SIGUSR1:SIGUSR2);
+	if(res<0) {
+		mutepid=-1;
+	}	
+}
+
+
+static void reflector_control(struct rpt *myrpt)
+{
+	int state;
+
+	if(myrpt->keyed) {
+		state = REFL_KEYED;
+	} else if (myrpt->remrx) {
+		state = REFL_REMOTE;
+	} else if (myrpt->txrealkeyed) {
+		if(myrpt->tele.next == &myrpt->tele)
+			state = REFL_OTHER;
+		else
+			state = REFL_TELE;
+	} else {
+		state = REFL_IDLE;
+	}
+	if(state == myrpt->reflstate) return;
+
+	if(state==REFL_TELE) {  //new state is transmitting telemetry, muting reflector
+		reflector_mute(1);
+	} else if(myrpt->reflstate==REFL_TELE) { //old state was transmitting telemetry, unmuting reflector
+		reflector_mute(0);
+	}
+	myrpt->reflstate = state;
+	
+	if(state==REFL_IDLE) {
+		ast_log(LOG_NOTICE, "Refletor control: system is idle\n" );
+	} else if(state==REFL_KEYED) {
+		ast_log(LOG_NOTICE, "Reflector control: HF input\n");
+	} else if(state==REFL_REMOTE) {
+		ast_log(LOG_NOTICE, "Reflector control: Remote audio input\n");
+	} else if(state==REFL_TELE) {
+		ast_log(LOG_NOTICE, "Reflector control: TX on, transmitting telemetry\n");
+	} else if(state==REFL_OTHER) {
+		ast_log(LOG_NOTICE, "Reflector control: TX on, no telemetry pending\n");
+	}
+}
+
 /* single thread with one file (request) to dial */
 static void *rpt(void *this)
 {
@@ -19851,6 +19931,9 @@ char tmpstr[300],lstr[MAXLINKLIST],lat[100],lon[100],elev[100];
 		/* if in 1/2 or 3/4 duplex, give rx priority */
 		if ((myrpt->p.duplex < 2) && (!myrpt->p.linktolink) && (!myrpt->p.dias) && (myrpt->keyed)) totx = 0;
 		if (myrpt->p.elke && (myrpt->elketimer > myrpt->p.elke)) totx = 0;
+		/* dl9rdz extension: reflector control */
+		reflector_control(myrpt);
+		/** */
 		if (totx && (!lasttx))
 		{
 			char mydate[100],myfname[100];
